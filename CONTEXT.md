@@ -29,6 +29,10 @@ defines the words those decisions use.
 | **curated default** | `entity list`'s default view: hides housekeeping classes (entity_category `config`/`diagnostic`) and entities in `unavailable`/`unknown` state. `--all` disables both exclusions. Aggregate counts always span the full set, so hidden mass stays visible as numbers. |
 | **TOON field map** | Per-noun definition of the 3–4 default fields emitted in TOON format; owned by the output-shapes prototype. |
 | **aggregate** | Pre-computed summary line (count by domain/state, unavailable total) printed before rows — kills follow-up round trips. |
+| **gated domain** | `lock`, `alarm_control_panel`, `cover` — mutation targets ha-axi hard-excludes. `service call` refuses them outright (structured `DOMAIN_EXCLUDED` error); state reads on their entities remain available. |
+| **dry run** | `service call --dry-run`: prints the exact request that would be sent (service, resolved target ids, payload) and exits without firing. |
+| **concrete target** | Explicit entity ids named on a mutation. Non-concrete targeting (`entity_id: all`, area/device bulk) is refused (`BULK_TARGET_REFUSED`) unless explicitly overridden. |
+| **idempotent flag** | Per-service metadata on `service list` output marking whether re-invocation is safe (setters true; toggle/trigger/scene/script false). Curated classification, advisory only. |
 
 ## Deferred terms (defined when their trigger fires)
 
