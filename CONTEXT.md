@@ -33,6 +33,9 @@ defines the words those decisions use.
 | **dry run** | `service call --dry-run`: prints the exact request that would be sent (service, resolved target ids, payload) and exits without firing. |
 | **concrete target** | Explicit entity ids named on a mutation. Non-concrete targeting (`entity_id: all`, area/device bulk) is refused (`BULK_TARGET_REFUSED`) unless explicitly overridden. |
 | **idempotent flag** | Per-service metadata on `service list` output marking whether re-invocation is safe (setters true; toggle/trigger/scene/script false). Curated classification, advisory only. |
+| **profile** | Named connection in `~/.config/ha-axi/config.toml` (`[profiles.<name>]`): `url`, optional `timeout`/`insecure`, and a `token` (literal, file chmod 600) or `token_cmd` (delegated secret lookup, e.g. macOS Keychain or a password manager). Selected via `--profile`/`-p`; default profile used when no flag/env. |
+| **credential resolution** | Deterministic order: flags → `HASS_URL`/`HASS_TOKEN` env → config profiles → stdin. Tokens never echoed; resolution is prompt-free (AXI: agents can't answer interactive prompts). |
+| **ping** | `ha-axi ping`: cheapest liveness/auth probe (`/api/`) emitting TOON `{ok, profile, version, latency_ms}`. The skill's bootstrap verification step. |
 
 ## Deferred terms (defined when their trigger fires)
 
