@@ -36,6 +36,9 @@ defines the words those decisions use.
 | **profile** | Named connection in `~/.config/ha-axi/config.toml` (`[profiles.<name>]`): `url`, optional `timeout`/`insecure`, and a `token` (literal, file chmod 600) or `token_cmd` (delegated secret lookup, e.g. macOS Keychain or a password manager). Selected via `--profile`/`-p`; default profile used when no flag/env. |
 | **credential resolution** | Deterministic order: flags → `HASS_URL`/`HASS_TOKEN` env → config profiles → stdin. Tokens never echoed; resolution is prompt-free (AXI: agents can't answer interactive prompts). |
 | **ping** | `ha-axi ping`: cheapest liveness/auth probe (`/api/`) emitting TOON `{ok, profile, version, latency_ms}`. The skill's bootstrap verification step. |
+| **dashboard** | Bare `ha-axi` output: profile/version/entity count plus four computed blocks from a single `/api/states` fetch — domain counts, unavailable/unknown list, low-battery sensors (<20%), stale entities (>24h silent). |
+| **ambient hook** | Opt-in SessionStart hook (`ha-axi setup hooks`, Claude/Codex/OpenCode) that runs `ping` only and injects one reachability line. Full dashboard stays on-demand. |
+| **invocation consent** | Entity names/areas appear only when ha-axi is explicitly invoked or its hook opted into. Hard rule regardless of invocation: `/api/config` geo fields are never fetched or emitted. |
 
 ## Deferred terms (defined when their trigger fires)
 
