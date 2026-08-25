@@ -1,0 +1,9 @@
+{
+  "name": "ha-axi-toon-shapes-prototype",
+  "private": true,
+  "type": "module",
+  "description": "PROTOTYPE - ticket #5. Throwaway generator for TOON output shapes. Not production code.",
+  "dependencies": {
+    "@toon-format/toon": "^4.1.1"
+  }
+}
