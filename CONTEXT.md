@@ -39,6 +39,7 @@ defines the words those decisions use.
 | **dashboard** | Bare `ha-axi` output: profile/version/entity count plus four computed blocks from a single `/api/states` fetch — domain counts, unavailable/unknown list, low-battery sensors (<20%), stale entities (>24h silent). |
 | **ambient hook** | Opt-in SessionStart hook (`ha-axi setup hooks`, Claude/Codex/OpenCode) that runs `ping` only and injects one reachability line. Full dashboard stays on-demand. |
 | **invocation consent** | Entity names/areas appear only when ha-axi is explicitly invoked or its hook opted into. Hard rule regardless of invocation: `/api/config` geo fields are never fetched or emitted. |
+| **test seam** | Fake HA server (HTTP + one-shot WS) serving version-stamped golden fixtures synthesized from bench recordings; tests spawn the built binary against it. Env-gated live contract suite (`HA_AXI_LIVE_URL`) detects upstream drift. |
 
 ## Deferred terms (defined when their trigger fires)
 
