@@ -1,0 +1,8 @@
+{
+  "release-type": "node",
+  "packages": {
+    ".": {
+      "include-component-in-tag": false
+    }
+  }
+}

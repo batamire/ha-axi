@@ -33,7 +33,9 @@
   },
   "scripts": {
     "build": "tsc && chmod +x dist/bin/ha-axi.js",
-    "test": "pnpm build && vitest run",
+    "build:skill": "tsx scripts/build-skill.ts",
+    "test": "pnpm build && vitest run && pnpm test:build-skill",
+    "test:build-skill": "tsx scripts/build-skill.ts --check",
     "dev": "tsx src/bin/ha-axi.ts"
   },
   "packageManager": "pnpm@10.13.1"

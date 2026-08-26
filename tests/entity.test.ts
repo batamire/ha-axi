@@ -333,7 +333,7 @@ describe("entity get", () => {
 
 describe("top-level help", () => {
   it("no longer marks entity as planned-only", async () => {
-    const res = await runCli([], { env: { HASS_URL: "https://hass.example", HASS_TOKEN: "synthetic-token" } });
+    const res = await runCli(["--help"], { env: { HASS_URL: "https://hass.example", HASS_TOKEN: "synthetic-token" } });
     expect(res.status).toBe(0);
     expect(res.stdout).not.toContain("(planned) List and inspect entities");
     expect(res.stdout).toContain("`list`, `get`");

@@ -1,0 +1,53 @@
+name: publish
+
+# NOTE: `release` alone doesn't work here — release-please creates the GitHub
+# Release with GITHUB_TOKEN, whose events never trigger other workflows.
+# workflow_run (release-please completion) is not subject to that restriction,
+# so it does the real work; the release trigger stays as a fallback for
+# manual releases.
+on:
+  release:
+    types: [released]
+  workflow_run:
+    workflows: [release-please]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # mint OIDC token for npm trusted publishing
+    steps:
+      - name: Resolve release tag / skip-if-published
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=$(gh api "repos/${{ github.repository }}/releases/latest" --jq .tag_name)
+          VERSION=${TAG#v}
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if npm view "ha-axi@$VERSION" version >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.tag.outputs.skip != 'true'
+        with:
+          ref: refs/tags/v${{ steps.tag.outputs.version }}
+      - uses: pnpm/action-setup@v4
+        if: steps.tag.outputs.skip != 'true'
+      - uses: actions/setup-node@v4
+        if: steps.tag.outputs.skip != 'true'
+        with:
+          node-version: 24 # ships npm 11.x, required for trusted publishing
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+        if: steps.tag.outputs.skip != 'true'
+      - run: pnpm build && pnpm build:skill
+        if: steps.tag.outputs.skip != 'true'
+      - run: npm publish --provenance --access public
+        if: steps.tag.outputs.skip != 'true'

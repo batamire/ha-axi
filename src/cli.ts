@@ -8,24 +8,31 @@ import { entityCommand } from "./entity.js";
 import { serviceCommand } from "./service.js";
 import { templateCommand, historyCommand, logbookCommand } from "./reads.js";
 import { areaCommand, deviceCommand, statisticsCommand } from "./bridge.js";
+import { buildDashboard } from "./dashboard.js";
+import { setupCommand } from "./setup.js";
 
 export const DESCRIPTION = "Agent control for Home Assistant without an MCP server";
 
 // Commands are advertised up front so agents can discover the surface.
+// Single source of truth for the advertised command surface; src/skill.ts
+// derives the SKILL.md command table from this map.
+export const COMMAND_SUMMARY: Record<string, string> = {
+  ping: "Liveness + auth probe (`{ok, profile, version, latency_ms}`)",
+  entity: "List and inspect entities (`list`, `get`)",
+  service: "List services; call them behind safety gates (`list`, `call`)",
+  template: "Render a Jinja2 template server-side (`render`)",
+  history: "State timelines per entity (`get`)",
+  logbook: "Human-readable event stream (`get`)",
+  area: "Area registry reads over the WS bridge (`list`, `get`)",
+  device: "Device registry reads over the WS bridge (`list`)",
+  statistics: "Recorder statistic discovery + summaries (`ids`, `get`)",
+  setup: "Install ambient SessionStart hooks for Claude/Codex/OpenCode (`hooks`)",
+};
+
 export const TOP_HELP = encode({
   usage: "ha-axi <command> [args] [flags]",
   description: DESCRIPTION,
-  commands: {
-    ping: "Liveness + auth probe (`{ok, profile, version, latency_ms}`)",
-    entity: "List and inspect entities (`list`, `get`)",
-    service: "List services; call them behind safety gates (`list`, `call`)",
-    template: "Render a Jinja2 template server-side (`render`)",
-    history: "State timelines per entity (`get`)",
-    logbook: "Human-readable event stream (`get`)",
-    area: "Area registry reads over the WS bridge (`list`, `get`)",
-    device: "Device registry reads over the WS bridge (`list`)",
-    statistics: "Recorder statistic discovery + summaries (`ids`, `get`)",
-  },
+  commands: COMMAND_SUMMARY,
   flags: {
     "--profile, -p": "Named connection profile from the config file",
     "--url": "Override Home Assistant URL",
@@ -64,11 +71,15 @@ export function parseGlobalFlags(args: string[]): ParsedArgs {
 
 
 async function pingCommand(args: string[], ctx?: GlobalFlags): Promise<string> {
-  if (args.length > 0) {
-    throw new AxiError(`Unexpected argument: ${args[0]}`, "VALIDATION_ERROR", [
+  const ambient = args.includes("--ambient");
+  const rest = args.filter((a) => a !== "--ambient");
+  if (rest.length > 0) {
+    throw new AxiError(`Unexpected argument: ${rest[0]}`, "VALIDATION_ERROR", [
       "Run `ha-axi ping --help` for usage",
     ]);
   }
+  if (ambient) return ambientPing(ctx);
+
   const cfg: ResolvedConfig = await resolveConfig(ctx ?? {});
   const ha = new HaClient(cfg);
   const startedAt = Date.now();
@@ -85,6 +96,27 @@ async function pingCommand(args: string[], ctx?: GlobalFlags): Promise<string> {
     "\n" +
     renderHelp(["entity list for inventory"])
   );
+}
+
+/**
+ * Hook payload (`ha-axi ping --ambient`, installed by `setup hooks`): one
+ * ambient line on success, one `[ha-axi] unreachable` line on any failure.
+ * Always exits 0 — NEVER blocks a session start.
+ */
+async function ambientPing(ctx?: GlobalFlags): Promise<string> {
+  try {
+    const cfg = await resolveConfig(ctx ?? {});
+    const ha = new HaClient(cfg);
+    const startedAt = Date.now();
+    await ha.get("/api/");
+    const config = (await ha.get("/api/config")) as { version?: unknown } | null;
+    const states = await ha.get("/api/states");
+    const count = Array.isArray(states) ? states.length : 0;
+    const version = typeof config?.version === "string" ? config.version : "unknown";
+    return `[ha-axi] ${cfg.profile} up · v${version} · ${count} entities · ${Date.now() - startedAt}ms`;
+  } catch {
+    return "[ha-axi] unreachable";
+  }
 }
 
 
@@ -123,8 +155,9 @@ export async function main(): Promise<void> {
         area: withStrippedFlags(areaCommand),
         device: withStrippedFlags(deviceCommand),
         statistics: withStrippedFlags(statisticsCommand),
+        setup: withStrippedFlags(setupCommand),
       },
-      home: async () => TOP_HELP,
+      home: async (_args, ctx?: GlobalFlags) => buildDashboard(ctx ?? {}),
       getCommandHelp: () => null,
       formatError,
       resolveContext: ({ args }) => parseGlobalFlags(args).flags,
