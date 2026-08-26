@@ -12,9 +12,14 @@ export const BIN = "./dist/bin/ha-axi.js";
 
 // ---------- fake HA HTTP server ----------
 
-export type RouteCtx = { method: string; body?: unknown };
-/** Return a plain value (=200 JSON) or {status?, json?}. */
-export type RouteHandler = (ctx: RouteCtx) => unknown;
+export type RouteCtx = { method: string; body?: unknown; url?: string };
+
+/** Route keys ending in `*` match by URL prefix (query strings vary per run). */
+function prefixRoute(routes: Record<string, RouteHandler>, url: string): RouteHandler | undefined {
+  const key = Object.keys(routes).find((k) => k.endsWith("*") && url.startsWith(k.slice(0, -1)));
+  return key === undefined ? undefined : routes[key];
+}
+/** Return a plain value (=200 JSON), {status?, json?}, or {status?, text?}. */
 
 export type Hit = { method: string; path: string; body?: unknown };
 
@@ -65,22 +70,31 @@ export async function startFakeHa(
     const body = await readBody(req);
     fake.hits.push({ method: req.method ?? "?", path: req.url ?? "?", body });
     const key = `${req.method} ${req.url}`;
-    const route = routes[key] ?? routes[req.url ?? ""];
-    res.setHeader("Content-Type", "application/json");
+    const route =
+      routes[key] ??
+      routes[req.url ?? ""] ??
+      prefixRoute(routes, req.url ?? "");
     if (!route) {
       res.statusCode = 404;
       res.end(JSON.stringify({ message: "Not found: no such fixture route" }));
       return;
     }
     const out =
-      typeof route === "function" ? await route({ method: req.method ?? "?", body }) : route;
+      typeof route === "function"
+        ? await route({ method: req.method ?? "?", body, url: req.url })
+        : route;
+    // Envelope form: {status?, json?} for JSON bodies or {status?, text?} for
+    // verbatim text/plain bodies (e.g. /api/template renderings).
     const isEnvelope =
-      typeof out === "object" && out !== null && ("json" in out || "status" in out);
-    const { status = 200, json } = isEnvelope
-      ? (out as { status?: number; json?: unknown })
+      typeof out === "object" &&
+      out !== null &&
+      ("json" in out || "status" in out || "text" in out);
+    const { status = 200, json, text } = isEnvelope
+      ? (out as { status?: number; json?: unknown; text?: string })
       : { json: out };
+    res.setHeader("Content-Type", text !== undefined ? "text/plain" : "application/json");
     res.statusCode = status;
-    res.end(JSON.stringify(json ?? {}));
+    res.end(text !== undefined ? text : JSON.stringify(json ?? {}));
   }
   if (opts.ws) {
     attachOneShotWs(server, opts.ws, new Set<Socket>());

@@ -8,50 +8,68 @@ export class HaClient {
   constructor(private readonly cfg: ResolvedConfig) {}
 
   async get(path: string): Promise<unknown> {
-    return this.request("GET", path);
+    return parseMaybeJson((await this.exchange("GET", path)).text);
   }
 
   /** Mutations are NEVER retried (contract #6). */
   async post(path: string, body: unknown): Promise<unknown> {
-    return this.request("POST", path, body);
+    return parseMaybeJson((await this.exchange("POST", path, body)).text);
   }
 
-  private async request(method: "GET" | "POST", path: string, body?: unknown): Promise<unknown> {
-    const attempt = async (): Promise<{ status: number; text: string }> => {
-      const controller = new AbortController();
-      // Connect phase gets a hard 5s budget; once headers arrive we swap in
-      // the full request timeout for the remainder of the exchange.
-      let timer = setTimeout(() => controller.abort(), CONNECT_TIMEOUT_MS);
-      try {
-        const res = await fetch(`${this.cfg.url}${path}`, {
-          method,
-          signal: controller.signal,
-          headers: {
-            Authorization: `Bearer ${this.cfg.token}`,
-            "Content-Type": "application/json",
-          },
-          body: method === "POST" ? JSON.stringify(body ?? {}) : undefined,
-        });
-        clearTimeout(timer);
-        timer = setTimeout(() => controller.abort(), this.cfg.timeoutMs);
-        const text = await res.text();
-        return { status: res.status, text };
-      } finally {
-        clearTimeout(timer);
-      }
-    };
+  /**
+   * POST returning the verbatim response body: `/api/template` answers
+   * text/plain, and JSON-parsing would corrupt renderings like `42`.
+   */
+  async postText(path: string, body: unknown): Promise<string> {
+    return (await this.exchange("POST", path, body)).text;
+  }
 
+  private async exchange(
+    method: "GET" | "POST",
+    path: string,
+    body?: unknown,
+  ): Promise<{ status: number; text: string }> {
     try {
-      let out = await attempt();
+      let out = await this.attempt(method, path, body);
       if (method === "GET" && out.status >= 500) {
-        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-        out = await attempt();
+        const { promise, resolve } = Promise.withResolvers<void>();
+        setTimeout(resolve, RETRY_DELAY_MS);
+        await promise;
+        out = await this.attempt(method, path, body);
       }
       if (out.status < 200 || out.status >= 300) throw this.httpError(out.status, out.text);
-      return parseMaybeJson(out.text);
+      return out;
     } catch (e) {
       if (e instanceof AxiError) throw e;
       throw this.networkError(e as Error);
+    }
+  }
+
+  private async attempt(
+    method: "GET" | "POST",
+    path: string,
+    body?: unknown,
+  ): Promise<{ status: number; text: string }> {
+    const controller = new AbortController();
+    // Connect phase gets a hard 5s budget; once headers arrive we swap in
+    // the full request timeout for the remainder of the exchange.
+    let timer = setTimeout(() => controller.abort(), CONNECT_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${this.cfg.url}${path}`, {
+        method,
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${this.cfg.token}`,
+          "Content-Type": "application/json",
+        },
+        body: method === "POST" ? JSON.stringify(body ?? {}) : undefined,
+      });
+      clearTimeout(timer);
+      timer = setTimeout(() => controller.abort(), this.cfg.timeoutMs);
+      const text = await res.text();
+      return { status: res.status, text };
+    } finally {
+      clearTimeout(timer);
     }
   }
 

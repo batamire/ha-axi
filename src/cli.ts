@@ -6,6 +6,7 @@ import { HaClient } from "./ha.js";
 import { renderHelp } from "./toon.js";
 import { entityCommand } from "./entity.js";
 import { serviceCommand } from "./service.js";
+import { templateCommand, historyCommand, logbookCommand } from "./reads.js";
 
 export const DESCRIPTION = "Agent control for Home Assistant without an MCP server";
 
@@ -18,9 +19,9 @@ export const TOP_HELP = encode({
     ping: "Liveness + auth probe (`{ok, profile, version, latency_ms}`)",
     entity: "List and inspect entities (`list`, `get`)",
     service: "List services; call them behind safety gates (`list`, `call`)",
-    template: "(planned) Render a Jinja2 template server-side",
-    history: "(planned) State timelines per entity",
-    logbook: "(planned) Human-readable event stream",
+    template: "Render a Jinja2 template server-side (`render`)",
+    history: "State timelines per entity (`get`)",
+    logbook: "Human-readable event stream (`get`)",
     area: "(planned) Area registry reads over the WS bridge",
     device: "(planned) Device registry reads over the WS bridge",
     statistics: "(planned) Recorder statistics over the WS bridge",
@@ -36,9 +37,6 @@ export const TOP_HELP = encode({
 });
 
 const PLANNED_COMMANDS: Record<string, true> = {
-  template: true,
-  history: true,
-  logbook: true,
   area: true,
   device: true,
   statistics: true,
@@ -132,6 +130,9 @@ export async function main(): Promise<void> {
         ping: withStrippedFlags(pingCommand),
         entity: withStrippedFlags(entityCommand),
         service: withStrippedFlags(serviceCommand),
+        template: withStrippedFlags(templateCommand),
+        history: withStrippedFlags(historyCommand),
+        logbook: withStrippedFlags(logbookCommand),
         ...Object.fromEntries(
           Object.keys(PLANNED_COMMANDS).map((name) => [name, plannedCommand(name)]),
         ),
