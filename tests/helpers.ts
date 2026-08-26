@@ -25,7 +25,10 @@ export type FakeHa = {
   close(): Promise<void>;
 };
 
-export async function startFakeHa(routes: Record<string, RouteHandler>): Promise<FakeHa> {
+export async function startFakeHa(
+  routes: Record<string, RouteHandler>,
+  opts: { ws?: WsResultFor } = {},
+): Promise<FakeHa> {
   const fake: FakeHa = {
     url: "",
     hits: [],
@@ -79,7 +82,9 @@ export async function startFakeHa(routes: Record<string, RouteHandler>): Promise
     res.statusCode = status;
     res.end(JSON.stringify(json ?? {}));
   }
-
+  if (opts.ws) {
+    attachOneShotWs(server, opts.ws, new Set<Socket>());
+  }
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const addr = server.address() as AddressInfo;
   fake.url = `http://127.0.0.1:${addr.port}`;
@@ -97,28 +102,30 @@ const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 export type FakeWs = { url: string; received: unknown[]; close(): Promise<void> };
 
+export type WsResultFor = (msg: { type: string; payload: Record<string, unknown> }) => unknown;
+
+function frame(payload: string): Buffer {
+  const data = Buffer.from(payload, "utf-8");
+  if (data.length < 126) return Buffer.concat([Buffer.from([0x81, data.length]), data]);
+  const len = Buffer.alloc(2);
+  len.writeUInt16BE(data.length);
+  return Buffer.concat([Buffer.from([0x81, 126]), len, data]);
+}
+
 /**
- * One-shot WS endpoint: sends `auth_required`, accepts an auth frame,
- * replies `auth_ok`, then answers the NEXT request id with
- * `{id, type:"result", success:true, result}`.
+ * Attach a one-shot WS endpoint onto an existing HTTP server: sends
+ * `auth_required`, accepts an auth frame, replies `auth_ok`, then answers every
+ * request frame with `{id, type:"result", success:true, result}` from
+ * `resultFor(msg)`. Used directly by startFakeWs and, via `opts.ws`, to serve
+ * registry reads on the same port as the fake REST API.
  */
-export async function startFakeWs(result: unknown): Promise<FakeWs> {
-  const received: unknown[] = [];
-  const sockets = new Set<Socket>();
-  const server: Server = createServer((_req, res) => {
-    res.statusCode = 426;
-    res.end();
-  });
-
-  function frame(payload: string): Buffer {
-    const data = Buffer.from(payload, "utf-8");
-    if (data.length < 126) return Buffer.concat([Buffer.from([0x81, data.length]), data]);
-    const len = Buffer.alloc(2);
-    len.writeUInt16BE(data.length);
-    return Buffer.concat([Buffer.from([0x81, 126]), len, data]);
-  }
-
-  server.on("upgrade", (req, socket) => {
+function attachOneShotWs(
+  server: Server,
+  resultFor: WsResultFor,
+  sockets: Set<Socket>,
+  received?: unknown[],
+): void {
+  server.on("upgrade", (req: IncomingMessage, socket: Socket) => {
     sockets.add(socket);
     socket.on("close", () => sockets.delete(socket));
     const key = req.headers["sec-websocket-key"];
@@ -137,7 +144,22 @@ export async function startFakeWs(result: unknown): Promise<FakeWs> {
       buffer = Buffer.concat([buffer, chunk]);
       // Minimal single-frame parse: masked client frames, small payloads.
       while (buffer.length >= 2) {
+        const opcode = buffer[0] & 0x0f;
         const lenByte = buffer[1] & 0x7f;
+        if (opcode === 0x8) {
+          // close frame: echo it back so the client's closing handshake
+          // completes and its process can exit
+          const maskStart = 2;
+          if (buffer.length < maskStart + 4 + lenByte) break;
+          const payload = buffer.subarray(maskStart + 4, maskStart + 4 + lenByte);
+          buffer = buffer.subarray(maskStart + 4 + lenByte);
+          socket.end(Buffer.concat([Buffer.from([0x88, lenByte]), payload]));
+          break;
+        }
+        if (opcode !== 0x1) {
+          buffer = Buffer.alloc(0); // not a text frame — drop and resync
+          break;
+        }
         const maskStart = 2;
         if (buffer.length < maskStart + 4 + lenByte) break;
         const mask = buffer.subarray(maskStart, maskStart + 4);
@@ -152,16 +174,34 @@ export async function startFakeWs(result: unknown): Promise<FakeWs> {
         } catch {
           continue;
         }
-        received.push(msg);
+        received?.push(msg);
         if (!authenticated && msg.type === "auth") {
           authenticated = true;
           socket.write(frame(JSON.stringify({ type: "auth_ok" })));
           continue;
         }
+        const result = resultFor({
+          type: String(msg.type),
+          payload: msg as Record<string, unknown>,
+        });
         socket.write(frame(JSON.stringify({ id: msg.id, type: "result", success: true, result })));
       }
     });
   });
+}
+
+/**
+ * Standalone one-shot WS endpoint (same protocol as attachOneShotWs) for
+ * tests that exercise the bridge directly.
+ */
+export async function startFakeWs(result: unknown): Promise<FakeWs> {
+  const received: unknown[] = [];
+  const server: Server = createServer((_req: IncomingMessage, res: ServerResponse) => {
+    res.statusCode = 426;
+    res.end();
+  });
+  const sockets = new Set<Socket>();
+  attachOneShotWs(server, () => result, sockets, received);
 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const addr = server.address() as AddressInfo;

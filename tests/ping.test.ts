@@ -60,7 +60,7 @@ describe("ping", () => {
   });
 
   it("marks planned commands as not implemented", async () => {
-    const res = await runCli(["entity", "list"], {
+    const res = await runCli(["statistics"], {
       env: { HASS_URL: "https://hass.example", HASS_TOKEN: "synthetic-token" },
     });
     expect(res.status).not.toBe(0);
