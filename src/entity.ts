@@ -161,7 +161,7 @@ function attrValue(v: unknown, full: boolean): unknown {
     const n = Object.keys(v).length;
     return full ? v : n === 0 ? {} : `object[${n}] — use --full`;
   }
-  return truncate(v); // the >8000-char rule applies per value, --full included
+  return full ? v : truncate(v); // --full bypasses the >8000-char rule, matching list
 }
 
 /** Scalar-only attrs block; `friendly_name` is surfaced as `name` instead. */
