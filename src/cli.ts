@@ -5,6 +5,7 @@ import { resolveConfig, type GlobalFlags, type ResolvedConfig } from "./config.j
 import { HaClient } from "./ha.js";
 import { renderHelp } from "./toon.js";
 import { entityCommand } from "./entity.js";
+import { serviceCommand } from "./service.js";
 
 export const DESCRIPTION = "Agent control for Home Assistant without an MCP server";
 
@@ -16,7 +17,7 @@ export const TOP_HELP = encode({
   commands: {
     ping: "Liveness + auth probe (`{ok, profile, version, latency_ms}`)",
     entity: "List and inspect entities (`list`, `get`)",
-    service: "(planned) List services; call them behind safety gates",
+    service: "List services; call them behind safety gates (`list`, `call`)",
     template: "(planned) Render a Jinja2 template server-side",
     history: "(planned) State timelines per entity",
     logbook: "(planned) Human-readable event stream",
@@ -35,7 +36,6 @@ export const TOP_HELP = encode({
 });
 
 const PLANNED_COMMANDS: Record<string, true> = {
-  service: true,
   template: true,
   history: true,
   logbook: true,
@@ -131,6 +131,7 @@ export async function main(): Promise<void> {
       commands: {
         ping: withStrippedFlags(pingCommand),
         entity: withStrippedFlags(entityCommand),
+        service: withStrippedFlags(serviceCommand),
         ...Object.fromEntries(
           Object.keys(PLANNED_COMMANDS).map((name) => [name, plannedCommand(name)]),
         ),
