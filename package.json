@@ -1,0 +1,40 @@
+{
+  "name": "ha-axi",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "description": "Agent-ergonomic CLI for Home Assistant — one AXI wrapping the REST API → TOON",
+  "bin": {
+    "ha-axi": "dist/bin/ha-axi.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/batamire/ha-axi.git"
+  },
+  "files": [
+    "dist",
+    "skills/ha-axi",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@toon-format/toon": "^4.1.1",
+    "axi-sdk-js": "^0.1.11",
+    "smol-toml": "^1.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "tsx": "^4",
+    "typescript": "^5.7",
+    "vitest": "^3"
+  },
+  "scripts": {
+    "build": "tsc && chmod +x dist/bin/ha-axi.js",
+    "test": "pnpm build && vitest run",
+    "dev": "tsx src/bin/ha-axi.ts"
+  },
+  "packageManager": "pnpm@10.13.1"
+}
