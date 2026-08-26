@@ -59,11 +59,11 @@ describe("ping", () => {
     expect(doc.code).toBe("CONNECTION_FAILED");
   });
 
-  it("marks planned commands as not implemented", async () => {
-    const res = await runCli(["statistics"], {
+  it("rejects an unknown subcommand with a validation error", async () => {
+    const res = await runCli(["statistics", "bogus"], {
       env: { HASS_URL: "https://hass.example", HASS_TOKEN: "synthetic-token" },
     });
-    expect(res.status).not.toBe(0);
-    expect(res.stdout).toContain("not implemented yet");
+    expect(res.status).toBe(2);
+    expect(res.stdout).toContain("Unknown statistics command");
   });
 });

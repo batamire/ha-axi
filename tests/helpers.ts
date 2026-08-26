@@ -26,6 +26,8 @@ export type Hit = { method: string; path: string; body?: unknown };
 export type FakeHa = {
   url: string;
   hits: Hit[];
+  /** Every frame received over the attached one-shot WS endpoint (if any). */
+  wsReceived: unknown[];
   hitCount(method: string, path: string): number;
   close(): Promise<void>;
 };
@@ -37,6 +39,7 @@ export async function startFakeHa(
   const fake: FakeHa = {
     url: "",
     hits: [],
+    wsReceived: [],
     hitCount(method, path) {
       return this.hits.filter((h) => h.method === method && h.path === path).length;
     },
@@ -97,7 +100,7 @@ export async function startFakeHa(
     res.end(text !== undefined ? text : JSON.stringify(json ?? {}));
   }
   if (opts.ws) {
-    attachOneShotWs(server, opts.ws, new Set<Socket>());
+    attachOneShotWs(server, opts.ws, new Set<Socket>(), fake.wsReceived);
   }
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const addr = server.address() as AddressInfo;
@@ -160,28 +163,40 @@ function attachOneShotWs(
       while (buffer.length >= 2) {
         const opcode = buffer[0] & 0x0f;
         const lenByte = buffer[1] & 0x7f;
+        let headerLen = 2;
+        let payloadLen = lenByte;
+        if (lenByte === 126) {
+          // Extended 16-bit payload length (long commands like
+          // recorder/statistics_during_period exceed the 126-byte 7-bit form).
+          if (buffer.length < 4) break;
+          payloadLen = buffer.readUInt16BE(2);
+          headerLen = 4;
+        } else if (lenByte === 127) {
+          buffer = Buffer.alloc(0); // 64-bit lengths never occur here
+          break;
+        }
         if (opcode === 0x8) {
           // close frame: echo it back so the client's closing handshake
           // completes and its process can exit
-          const maskStart = 2;
-          if (buffer.length < maskStart + 4 + lenByte) break;
-          const payload = buffer.subarray(maskStart + 4, maskStart + 4 + lenByte);
-          buffer = buffer.subarray(maskStart + 4 + lenByte);
-          socket.end(Buffer.concat([Buffer.from([0x88, lenByte]), payload]));
+          const maskStart = headerLen;
+          if (buffer.length < maskStart + 4 + payloadLen) break;
+          const payload = buffer.subarray(maskStart + 4, maskStart + 4 + payloadLen);
+          buffer = buffer.subarray(maskStart + 4 + payloadLen);
+          socket.end(Buffer.concat([Buffer.from([0x88, payload.length]), payload]));
           break;
         }
         if (opcode !== 0x1) {
           buffer = Buffer.alloc(0); // not a text frame — drop and resync
           break;
         }
-        const maskStart = 2;
-        if (buffer.length < maskStart + 4 + lenByte) break;
+        const maskStart = headerLen;
+        if (buffer.length < maskStart + 4 + payloadLen) break;
         const mask = buffer.subarray(maskStart, maskStart + 4);
         const payloadStart = maskStart + 4;
         const payload = Buffer.from(
-          buffer.subarray(payloadStart, payloadStart + lenByte).map((b, i) => b ^ mask[i % 4]),
+          buffer.subarray(payloadStart, payloadStart + payloadLen).map((b, i) => b ^ mask[i % 4]),
         );
-        buffer = buffer.subarray(payloadStart + lenByte);
+        buffer = buffer.subarray(payloadStart + payloadLen);
         let msg: Record<string, unknown>;
         try {
           msg = JSON.parse(payload.toString("utf-8")) as Record<string, unknown>;

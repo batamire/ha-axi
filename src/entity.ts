@@ -139,14 +139,14 @@ async function resolveAreaIndex(cfg: Awaited<ReturnType<typeof resolveConfig>>):
 }
 
 /** Registry rows arrive as a JSON array of flat objects over the bridge. */
-function registryRows(v: unknown): Array<Record<string, unknown>> {
+export function registryRows(v: unknown): Array<Record<string, unknown>> {
   if (!Array.isArray(v)) {
     throw new AxiError("Unexpected registry response from the WS bridge", "UPSTREAM_ERROR", []);
   }
   return v as Array<Record<string, unknown>>;
 }
 
-function str(v: unknown): string | undefined {
+export function str(v: unknown): string | undefined {
   return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
@@ -213,7 +213,7 @@ export async function entityCommand(args: string[], ctx?: GlobalFlags): Promise<
   );
 }
 
-function truncateRow(row: Row, full: boolean): Row {
+export function truncateRow(row: Row, full: boolean): Row {
   if (full) return row;
   return Object.fromEntries(Object.entries(row).map(([k, v]) => [k, truncate(v)]));
 }

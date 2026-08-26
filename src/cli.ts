@@ -7,11 +7,11 @@ import { renderHelp } from "./toon.js";
 import { entityCommand } from "./entity.js";
 import { serviceCommand } from "./service.js";
 import { templateCommand, historyCommand, logbookCommand } from "./reads.js";
+import { areaCommand, deviceCommand, statisticsCommand } from "./bridge.js";
 
 export const DESCRIPTION = "Agent control for Home Assistant without an MCP server";
 
-// Planned commands are advertised up front so agents can discover the surface;
-// each carries a "(planned)" marker until its slice lands.
+// Commands are advertised up front so agents can discover the surface.
 export const TOP_HELP = encode({
   usage: "ha-axi <command> [args] [flags]",
   description: DESCRIPTION,
@@ -22,9 +22,9 @@ export const TOP_HELP = encode({
     template: "Render a Jinja2 template server-side (`render`)",
     history: "State timelines per entity (`get`)",
     logbook: "Human-readable event stream (`get`)",
-    area: "(planned) Area registry reads over the WS bridge",
-    device: "(planned) Device registry reads over the WS bridge",
-    statistics: "(planned) Recorder statistics over the WS bridge",
+    area: "Area registry reads over the WS bridge (`list`, `get`)",
+    device: "Device registry reads over the WS bridge (`list`)",
+    statistics: "Recorder statistic discovery + summaries (`ids`, `get`)",
   },
   flags: {
     "--profile, -p": "Named connection profile from the config file",
@@ -36,11 +36,6 @@ export const TOP_HELP = encode({
   examples: ["ha-axi ping", "ha-axi -p bench ping", "ha-axi entity list"],
 });
 
-const PLANNED_COMMANDS: Record<string, true> = {
-  area: true,
-  device: true,
-  statistics: true,
-};
 
 export type ParsedArgs = { flags: GlobalFlags; rest: string[] };
 
@@ -92,14 +87,6 @@ async function pingCommand(args: string[], ctx?: GlobalFlags): Promise<string> {
   );
 }
 
-function plannedCommand(name: string): () => never {
-  return () => {
-    throw new AxiError(`${name} is not implemented yet`, "UNKNOWN", [
-      "this verb lands in a later slice",
-      "run `ha-axi ping` to verify connectivity meanwhile",
-    ]);
-  };
-}
 
 /** Commands receive args with global flags already stripped. */
 function withStrippedFlags(
@@ -133,9 +120,9 @@ export async function main(): Promise<void> {
         template: withStrippedFlags(templateCommand),
         history: withStrippedFlags(historyCommand),
         logbook: withStrippedFlags(logbookCommand),
-        ...Object.fromEntries(
-          Object.keys(PLANNED_COMMANDS).map((name) => [name, plannedCommand(name)]),
-        ),
+        area: withStrippedFlags(areaCommand),
+        device: withStrippedFlags(deviceCommand),
+        statistics: withStrippedFlags(statisticsCommand),
       },
       home: async () => TOP_HELP,
       getCommandHelp: () => null,
