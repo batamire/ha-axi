@@ -16,8 +16,10 @@ describe("stateless WS bridge", () => {
       // one auth + one command — nothing else was sent
       expect(fake.received).toHaveLength(2);
       expect((fake.received[0] as Record<string, unknown>).type).toBe("auth");
+      // auth frame has no id per HA spec; the single command is id 1
+      expect((fake.received[0] as Record<string, unknown>).id).toBeUndefined();
       const cmd = fake.received[1] as Record<string, unknown>;
-      expect(cmd.id).toBe(2);
+      expect(cmd.id).toBe(1);
       expect(cmd.type).toBe("config/area_registry/list");
     } finally {
       await fake.close();

@@ -107,7 +107,7 @@ describe("area list", () => {
       const cmds = commandsOf(fake);
       expect(cmds).toHaveLength(3);
       for (const cmd of cmds) {
-        expect(cmd.id).toBe(2);
+        expect(cmd.id).toBe(1);
         expect(Object.keys(REGISTRIES)).toContain(cmd.type);
       }
     } finally {
@@ -288,7 +288,7 @@ describe("statistics get", () => {
       const cmds = commandsOf(fake);
       expect(cmds).toHaveLength(1);
       expect(cmds[0]).toEqual({
-        id: 2,
+        id: 1,
         type: "recorder/statistics_during_period",
         statistic_ids: ["sensor.kitchen_temperature"],
         start_time: "2024-05-06T07:08:09.000Z",

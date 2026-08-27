@@ -69,7 +69,7 @@ export async function wsCall(
     }
     switch (msg.type) {
       case "auth_required":
-        send({ id: ++id, type: "auth", access_token: cfg.token });
+        send({ type: "auth", access_token: cfg.token });
         break;
       case "auth_invalid":
         finish(
