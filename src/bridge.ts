@@ -419,9 +419,15 @@ async function statsGet(args: string[], ctx?: GlobalFlags): Promise<string> {
       continue;
     }
     const rows: Row[] = (entries as StatEntry[]).map((e) => {
+      let start: string;
+      if (typeof e.start === "string") start = relTime(e.start);
+      else if (typeof e.start === "number" && Number.isFinite(e.start)) {
+        // HA returns start as epoch ms (number) in some releases.
+        start = relTime(new Date(e.start).toISOString());
+      } else start = "?";
       const row: Row = {
         id,
-        start: typeof e.start === "string" ? relTime(e.start) : "?",
+        start,
         mean: e.mean ?? null,
         min: e.min ?? null,
         max: e.max ?? null,

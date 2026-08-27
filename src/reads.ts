@@ -189,18 +189,23 @@ export async function historyCommand(args: string[], ctx?: GlobalFlags): Promise
   if (!Array.isArray(response)) {
     throw new AxiError("Unexpected /api/history/period response shape", "UPSTREAM_ERROR", []);
   }
-
-  // One timeline per entity, keyed off each entry's own entity_id so server
-  // ordering never misattributes rows.
+  // HA with minimal_response=1 omits entity_id after the first state in each
+  // timeline. The response outer order matches filter_entity_id, so we fall
+  // back to the requested ids order when entity_id is absent.
   const timelines = new Map<string, HaTimelineState[]>();
-  for (const timeline of response as unknown[]) {
+  for (let i = 0; i < response.length; i++) {
+    const timeline = response[i] as unknown;
     if (!Array.isArray(timeline)) continue;
+    if (timeline.length === 0) continue;
+    const first = timeline[0] as HaTimelineState;
+    const entityId =
+      typeof first?.entity_id === "string" ? (first.entity_id as string) : ids[i];
+    if (typeof entityId !== "string") continue;
+    const bucket = timelines.get(entityId) ?? [];
     for (const st of timeline as HaTimelineState[]) {
-      if (typeof st.entity_id !== "string") continue;
-      const bucket = timelines.get(st.entity_id) ?? [];
       bucket.push(st);
-      timelines.set(st.entity_id, bucket);
     }
+    timelines.set(entityId, bucket);
   }
 
   const rowsFor = (id: string): Row[] => {
