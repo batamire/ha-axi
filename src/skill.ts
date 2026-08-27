@@ -1,5 +1,23 @@
 import { COMMAND_SUMMARY } from "./cli.js";
 
+// Trigger string agents match against to auto-load the skill. Kept terse and
+// outcome-focused so it fires on Home Assistant jargon.
+export const SKILL_DESCRIPTION =
+  "Agent control for Home Assistant without an MCP server - one stateless CLI over the REST API emitting TOON for token-efficient agent output. Use for Home Assistant (hass) automation queries and safe device control, including Zigbee, HomeKit, Matter, and Thread integrations exposed through hass. Keywords: Home Assistant, hass, ha-axi, Zigbee, HomeKit, Matter, Thread.";
+
+// Harnesses that don't know these fields ignore them.
+export const HERMES_TAGS = [
+  "home-assistant",
+  "hass",
+  "smart-home",
+  "zigbee",
+  "homekit",
+  "matter",
+  "thread",
+];
+
+export const HERMES_CATEGORY = "smart-home";
+
 /**
  * Single source of truth for the installable skill (#8/#9): SKILL.md is
  * derived here so it can never drift from what `ha-axi --help` advertises.
@@ -10,9 +28,14 @@ export function createSkillMarkdown(): string {
     .map(([name, desc]) => `| \`${name}\` | ${desc} |`)
     .join("\n");
 
-  return `---
+return `---
 name: ha-axi
-description: Agent control for Home Assistant without an MCP server - one stateless CLI over the REST API emitting TOON for token-efficient agent output. Use for Home Assistant (hass) automation queries and safe device control, including Zigbee, HomeKit, Matter, and Thread integrations exposed through hass. Keywords: Home Assistant, hass, ha-axi, Zigbee, HomeKit, Matter, Thread.
+description: ${JSON.stringify(SKILL_DESCRIPTION)}
+user-invocable: false
+metadata:
+  hermes:
+    category: ${HERMES_CATEGORY}
+    tags: [${HERMES_TAGS.join(", ")}]
 ---
 
 # ha-axi

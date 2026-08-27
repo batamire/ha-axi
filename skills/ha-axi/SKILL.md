@@ -1,6 +1,11 @@
 ---
 name: ha-axi
-description: Agent control for Home Assistant without an MCP server - one stateless CLI over the REST API emitting TOON for token-efficient agent output. Use for Home Assistant (hass) automation queries and safe device control, including Zigbee, HomeKit, Matter, and Thread integrations exposed through hass. Keywords: Home Assistant, hass, ha-axi, Zigbee, HomeKit, Matter, Thread.
+description: "Agent control for Home Assistant without an MCP server - one stateless CLI over the REST API emitting TOON for token-efficient agent output. Use for Home Assistant (hass) automation queries and safe device control, including Zigbee, HomeKit, Matter, and Thread integrations exposed through hass. Keywords: Home Assistant, hass, ha-axi, Zigbee, HomeKit, Matter, Thread."
+user-invocable: false
+metadata:
+  hermes:
+    category: smart-home
+    tags: [home-assistant, hass, smart-home, zigbee, homekit, matter, thread]
 ---
 
 # ha-axi
