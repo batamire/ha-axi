@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1](https://github.com/batamire/ha-axi/compare/v0.1.0...v0.1.1) (2026-09-15)
+
+
+### Bug Fixes
+
+* **version:** derive --version from package.json instead of a synced constant ([#20](https://github.com/batamire/ha-axi/issues/20)) ([d68f7af](https://github.com/batamire/ha-axi/commit/d68f7af13075f1526fefcf01be5638550eaeecb4))
+* **version:** keep reported --version in sync with releases ([bd61375](https://github.com/batamire/ha-axi/commit/bd613754de816707189770a78debf0648fc64b60))
+
 ## 0.1.0 (2026-08-27)
 
 
