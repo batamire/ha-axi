@@ -64,3 +64,24 @@ the publish workflow relies on (`id-token: write`, provenance).
 2. Re-check step 1 greps once more on the now-public history.
 3. Tag/publish via release-please merge; watch the `publish` workflow use OIDC
    (no `NODE_AUTH_TOKEN` secret should exist or be needed).
+
+## 7. Every release after the first
+
+The lane is automatic — the only manual step is merging the release PR.
+
+1. release-please opens/updates a `chore(main): release X.Y.Z` PR on each push
+   to `main`.
+2. Merge it → tag `vX.Y.Z` + GitHub Release.
+3. The `publish` workflow checks out that tag, asserts the tag matches the tree
+   (`package.json` version == `X.Y.Z`), publishes with OIDC trusted publishing +
+   provenance, then **verifies the published artifact**: both
+   `npm view ha-axi@X.Y.Z version` and `npx -y ha-axi@X.Y.Z --version` must equal
+   `X.Y.Z`, or the run fails.
+4. Nothing to bump by hand: `src/version.ts` reads `package.json` (the single
+   source of truth) at runtime, so `ha-axi --version` cannot drift from the
+   released version.
+
+Runs on `main` that create no release are reported as **no-ops** — job green,
+but with a step summary and a run annotation saying so. A green `publish` run
+that published nothing, while looking identical to a real one, is exactly how a
+stale `0.1.0` stayed on npm from 2026-08-27 to 2026-09-15.

@@ -5,6 +5,12 @@ name: publish
 # workflow_run (release-please completion) is not subject to that restriction,
 # so it does the real work; the release trigger stays as a fallback for
 # manual releases.
+#
+# This workflow fires on every push to main (release-please completes each
+# time), so most runs are deliberate no-ops. A no-op is *reported* — step
+# summary + annotation — instead of quietly succeeding: a green "publish" run
+# that published nothing is how a stale 0.1.0 sat on npm from 2026-08-27 to
+# 2026-09-15 without anyone noticing.
 on:
   release:
     types: [released]
@@ -22,7 +28,7 @@ jobs:
       contents: read
       id-token: write # mint OIDC token for npm trusted publishing
     steps:
-      - name: Resolve release tag / skip-if-published
+      - name: Resolve release tag (no-op when already on npm)
         id: tag
         env:
           GH_TOKEN: ${{ github.token }}
@@ -32,6 +38,16 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           if npm view "ha-axi@$VERSION" version >/dev/null 2>&1; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "### No-op: nothing to publish"
+              echo ""
+              echo "\`ha-axi@$VERSION\` (release \`$TAG\`) is already on npm, so this"
+              echo "run builds and publishes nothing. Expected for a push to main"
+              echo "that did not create a new release."
+            } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+            echo "::notice title=publish skipped (no-op)::ha-axi@$VERSION is already on npm — nothing to publish."
+          else
+            echo "::notice title=publishing::Releasing ha-axi@$VERSION from tag $TAG."
           fi
       - uses: actions/checkout@v4
         if: steps.tag.outputs.skip != 'true'
@@ -45,9 +61,58 @@ jobs:
           node-version: 24 # ships npm 11.x, required for trusted publishing
           cache: pnpm
           registry-url: https://registry.npmjs.org
-      - run: pnpm install --frozen-lockfile
+      - name: Install
         if: steps.tag.outputs.skip != 'true'
-      - run: pnpm build && pnpm build:skill
+        run: pnpm install --frozen-lockfile
+      - name: Build
         if: steps.tag.outputs.skip != 'true'
-      - run: npm publish --provenance --access public
+        run: pnpm build && pnpm build:skill
+      - name: Assert the release tag matches the tree it points at
         if: steps.tag.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          # The checkout above is `refs/tags/v$VERSION`, so this catches a tag
+          # that points at a tree still carrying a different version — the
+          # signature of a hand-made release.
+          TREE_VERSION=$(jq -r .version package.json)
+          if [ "$TREE_VERSION" != "$VERSION" ]; then
+            echo "::error title=tag/version mismatch::release v$VERSION points at package.json $TREE_VERSION"
+            exit 1
+          fi
+          echo "tag v$VERSION matches package.json $TREE_VERSION"
+      - name: Publish to npm (OIDC trusted publishing + provenance)
+        if: steps.tag.outputs.skip != 'true'
+        run: npm publish --provenance --access public
+      - name: Verify the published artifact self-reports its version
+        if: steps.tag.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          # Tests the tarball npm actually serves, from a clean environment —
+          # the one check that would have caught 0.1.0 reporting 0.0.x. No unit
+          # test in this repo can do it. Retries while the registry propagates.
+          #
+          # Run from a temp dir: this checkout's package.json is named `ha-axi`,
+          # and npx inside a directory with that name resolves the local package
+          # instead of the registry tarball (`command not found`), which would
+          # verify nothing while looking like a check.
+          cd "$(mktemp -d)"
+          for attempt in 1 2 3 4 5 6; do
+            PUBLISHED=$(npm view "ha-axi@$VERSION" version 2>/dev/null || true)
+            REPORTED=$(npx -y "ha-axi@$VERSION" --version 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | tail -1 || true)
+            if [ "$PUBLISHED" = "$VERSION" ] && [ "$REPORTED" = "$VERSION" ]; then
+              echo "ha-axi@$VERSION published; --version reports $REPORTED"
+              {
+                echo "### Published ha-axi@$VERSION"
+                echo ""
+                echo "- \`npm view ha-axi@$VERSION version\` -> \`$PUBLISHED\`"
+                echo "- \`npx -y ha-axi@$VERSION --version\` -> \`$REPORTED\`"
+              } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+              exit 0
+            fi
+            echo "attempt $attempt: npm view='$PUBLISHED', --version='$REPORTED'; retrying in 15s"
+            sleep 15
+          done
+          echo "::error title=published artifact disagrees::ha-axi@$VERSION published but npm view='$PUBLISHED' --version='$REPORTED'"
+          exit 1
