@@ -61,8 +61,13 @@ describe("stateless WS bridge", () => {
     expect(err).toMatchObject({ code: "CONNECTION_FAILED" });
     expect(err.message).toMatch(/over WebSocket/i);
     expect(err.message).not.toBe("Cannot reach Home Assistant over WebSocket");
-    // Node reports the underlying socket failure on the close event (1006).
-    expect(err.message).toMatch(/1006|closed|refused|ECONNREFUSED/i);
+    // The detail the runtime exposes differs by Node version: Node 24 reports
+    // the socket failure on the close event (code 1006, empty reason), while
+    // Node 22 surfaces undici's own "Received network error or non-101 status
+    // code." on the error event instead. Either is real transport detail; the
+    // regression this guards is the bare fixed message, which matches none of
+    // these tokens.
+    expect(err.message).toMatch(/1006|closed|refused|ECONNREFUSED|network error|non-101/i);
   });
 
   it("falls back to the next candidate on a transport-level failure", async () => {
