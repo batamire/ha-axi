@@ -97,22 +97,49 @@ jobs:
           # and npx inside a directory with that name resolves the local package
           # instead of the registry tarball (`command not found`), which would
           # verify nothing while looking like a check.
+          #
+          # Three details learned the hard way on the 0.2.0 release, where this
+          # step failed while the publish itself succeeded:
+          #   1. 90 s is not a propagation budget. Read replicas can lag for
+          #      minutes, so retry for five.
+          #   2. Read anonymously. setup-node leaves a publish credential in
+          #      .npmrc, and presenting a stale token on a public read can turn
+          #      an ordinary 404-while-propagating into an auth error. Verifying
+          #      a public artifact should not need credentials at all.
+          #   3. Never swallow npm's own stderr. An empty shell variable cannot
+          #      distinguish a slow registry from a broken one, and that is
+          #      exactly the difference a human needs to see.
           cd "$(mktemp -d)"
-          for attempt in 1 2 3 4 5 6; do
-            PUBLISHED=$(npm view "ha-axi@$VERSION" version 2>/dev/null || true)
-            REPORTED=$(npx -y "ha-axi@$VERSION" --version 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | tail -1 || true)
-            if [ "$PUBLISHED" = "$VERSION" ] && [ "$REPORTED" = "$VERSION" ]; then
-              echo "ha-axi@$VERSION published; --version reports $REPORTED"
-              {
-                echo "### Published ha-axi@$VERSION"
-                echo ""
-                echo "- \`npm view ha-axi@$VERSION version\` -> \`$PUBLISHED\`"
-                echo "- \`npx -y ha-axi@$VERSION --version\` -> \`$REPORTED\`"
-              } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
-              exit 0
+          export NPM_CONFIG_USERCONFIG=/dev/null
+          attempts=20
+          for attempt in $(seq 1 "$attempts"); do
+            npm_err=$(mktemp)
+            PUBLISHED=$(npm view "ha-axi@$VERSION" version 2>"$npm_err" || true)
+            if [ "$PUBLISHED" = "$VERSION" ]; then
+              REPORTED=$(npx -y "ha-axi@$VERSION" --version 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | tail -1 || true)
+              if [ "$REPORTED" = "$VERSION" ]; then
+                echo "ha-axi@$VERSION published; --version reports $REPORTED"
+                {
+                  echo "### Published ha-axi@$VERSION"
+                  echo ""
+                  echo "- \`npm view ha-axi@$VERSION version\` -> \`$PUBLISHED\`"
+                  echo "- \`npx -y ha-axi@$VERSION --version\` -> \`$REPORTED\`"
+                } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+                exit 0
+              fi
+              echo "attempt $attempt/$attempts: registry serves $VERSION but '--version' reported '$REPORTED'"
+            else
+              echo "attempt $attempt/$attempts: registry does not serve $VERSION yet"
+              if [ -s "$npm_err" ]; then
+                # One capped line: npm's full 404 block repeated 20 times buries
+                # everything else in the log.
+                detail=$(tr '\n' ' ' < "$npm_err" | tr -s ' ')
+                echo "  npm said: ${detail:0:200}"
+              fi
             fi
-            echo "attempt $attempt: npm view='$PUBLISHED', --version='$REPORTED'; retrying in 15s"
-            sleep 15
+            if [ "$attempt" -lt "$attempts" ]; then
+              sleep 15
+            fi
           done
-          echo "::error title=published artifact disagrees::ha-axi@$VERSION published but npm view='$PUBLISHED' --version='$REPORTED'"
+          echo "::error title=published artifact disagrees::ha-axi@$VERSION not verifiable after $((attempts * 15))s: npm view='$PUBLISHED', --version='$REPORTED'"
           exit 1
