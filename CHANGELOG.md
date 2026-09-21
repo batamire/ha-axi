@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/batamire/ha-axi/compare/v0.1.1...v0.2.0) (2026-09-21)
+
+
+### Features
+
+* **net:** report transport failure causes and try fallback URLs ([#22](https://github.com/batamire/ha-axi/issues/22)) ([1ce1149](https://github.com/batamire/ha-axi/commit/1ce1149e1d13ff035bd8845c98da305cd7d442e1))
+
 ## [0.1.1](https://github.com/batamire/ha-axi/compare/v0.1.0...v0.1.1) (2026-09-15)
 
 
