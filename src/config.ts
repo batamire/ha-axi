@@ -12,18 +12,25 @@ export type GlobalFlags = {
   profile?: string;
   url?: string;
   token?: string;
+  verbose?: boolean;
 };
 
 export type ResolvedConfig = {
+  /** First candidate; kept for callers that predate ordered URLs. */
   url: string;
+  /** Ordered connection candidates, tried left to right (`urls[0] === url`). */
+  urls: string[];
   token: string;
   profile: string;
   timeoutMs: number;
   insecure: boolean;
+  /** Trace candidate selection to stderr even when the first one answers. */
+  verbose: boolean;
 };
 
 type Profile = {
   url?: string;
+  urls?: unknown;
   token?: string;
   token_cmd?: string;
   timeout?: number;
@@ -104,8 +111,8 @@ export async function resolveConfig(
   const profileName = flags.profile ?? pickDefaultProfileName(profiles) ?? "default";
   const profile = profiles[profileName];
 
-  const url = flags.url ?? envValue("HASS_URL") ?? profile?.url;
-  if (!url && !profile) {
+  const urls = collectUrls(flags.url, envValue("HASS_URLS"), envValue("HASS_URL"), profile, profileName);
+  if (urls.length === 0 && !profile) {
     throw new AxiError("No Home Assistant connection configured", "AUTH_MISSING", [
       "set HASS_URL and HASS_TOKEN",
       `or add [profiles.${profileName}] with url/token to ${configPath(opts.homeDir)}`,
@@ -120,9 +127,9 @@ export async function resolveConfig(
     if (piped?.trim()) token = piped.trim();
   }
 
-  if (!url) {
+  if (urls.length === 0) {
     throw new AxiError(`No url for profile '${profileName}'`, "VALIDATION_ERROR", [
-      `set url in [profiles.${profileName}] or pass --url`,
+      `set url or urls in [profiles.${profileName}] or pass --url`,
     ]);
   }
   if (!token) {
@@ -141,12 +148,70 @@ export async function resolveConfig(
   }
 
   return {
-    url: url.replace(/\/+$/, ""),
+    url: urls[0],
+    urls,
     token,
     profile: profileName,
     timeoutMs: (profile?.timeout ?? 30) * 1000,
     insecure,
+    verbose: flags.verbose === true,
   };
+}
+
+/** Ordered candidates for a resolved config; tolerates pre-`urls` callers. */
+export function urlCandidates(cfg: Pick<ResolvedConfig, "url" | "urls">): string[] {
+  return Array.isArray(cfg.urls) && cfg.urls.length > 0 ? cfg.urls : [cfg.url];
+}
+
+/**
+ * Candidate precedence mirrors credential resolution: `--url` > `HASS_URLS` >
+ * `HASS_URL` > profile `urls` > profile `url`. `urls` (when non-empty) wins
+ * over a legacy single `url`. Candidates are trimmed, de-slashed, and deduped;
+ * the first candidate that answers wins, all sharing the profile's one token.
+ */
+function collectUrls(
+  flagUrl: string | undefined,
+  envUrls: string | undefined,
+  envUrl: string | undefined,
+  profile: Profile | undefined,
+  profileName: string,
+): string[] {
+  const envList = envUrls ? splitList(envUrls) : [];
+  // Overrides win outright; the profile is only inspected (and validated) when
+  // none of them supplied a candidate, so `--url` can bypass a stale entry.
+  let raw: string[] | undefined =
+    flagUrl ? [flagUrl] : envList.length > 0 ? envList : envUrl ? [envUrl] : undefined;
+  if (!raw && profile?.urls !== undefined) {
+    const list = profileUrlList(profile.urls, profileName).filter((u) => u.trim() !== "");
+    raw = list.length > 0 ? list : undefined;
+  }
+  if (!raw && profile?.url) raw = [profile.url];
+
+  const out: string[] = [];
+  for (const candidate of raw ?? []) {
+    const normalized = candidate.trim().replace(/\/+$/, "");
+    if (normalized && !out.includes(normalized)) out.push(normalized);
+  }
+  return out;
+}
+
+/** `HASS_URLS` is a comma-separated list; empty entries are ignored. */
+function splitList(value: string): string[] {
+  return value
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function profileUrlList(value: unknown, profileName: string): string[] {
+  if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
+    throw new AxiError(
+      `urls for profile '${profileName}' must be an array of URL strings`,
+      "VALIDATION_ERROR",
+      ['use urls = ["https://primary.example", "https://fallback.example"]'],
+    );
+  }
+  return value as string[];
 }
 
 /** Env lookup treating unset and empty-string the same. */

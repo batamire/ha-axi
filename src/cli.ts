@@ -35,8 +35,9 @@ export const TOP_HELP = encode({
   commands: COMMAND_SUMMARY,
   flags: {
     "--profile, -p": "Named connection profile from the config file",
-    "--url": "Override Home Assistant URL",
+    "--url": "Override Home Assistant URL (wins over HASS_URLS and profiles)",
     "--token": "Override long-lived access token",
+    "--verbose": "Trace candidate URL selection on stderr",
     "--help": "Show help for a command",
     "--version": "Show version",
   },
@@ -55,6 +56,10 @@ export function parseGlobalFlags(args: string[]): ParsedArgs {
     const eq = arg.indexOf("=");
     const name = eq === -1 ? arg : arg.slice(0, eq);
     const inlineValue = eq === -1 ? undefined : arg.slice(eq + 1);
+    if (name === "--verbose") {
+      flags.verbose = true;
+      continue;
+    }
     const takesValue = name === "--profile" || name === "-p" || name === "--url" || name === "--token";
     if (!takesValue) {
       rest.push(arg);
