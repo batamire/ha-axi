@@ -120,7 +120,6 @@ const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 export type FakeWs = { url: string; received: unknown[]; close(): Promise<void> };
 
 export type WsResultFor = (msg: { type: string; payload: Record<string, unknown> }) => unknown;
-
 function frame(payload: string): Buffer {
   const data = Buffer.from(payload, "utf-8");
   if (data.length < 126) return Buffer.concat([Buffer.from([0x81, data.length]), data]);
@@ -141,6 +140,7 @@ function attachOneShotWs(
   resultFor: WsResultFor,
   sockets: Set<Socket>,
   received?: unknown[],
+  authInvalid = false,
 ): void {
   server.on("upgrade", (req: IncomingMessage, socket: Socket) => {
     sockets.add(socket);
@@ -206,6 +206,10 @@ function attachOneShotWs(
         received?.push(msg);
         if (!authenticated && msg.type === "auth") {
           authenticated = true;
+          if (authInvalid) {
+            socket.write(frame(JSON.stringify({ type: "auth_invalid", message: "Invalid access token" })));
+            continue;
+          }
           socket.write(frame(JSON.stringify({ type: "auth_ok" })));
           continue;
         }
@@ -219,18 +223,20 @@ function attachOneShotWs(
   });
 }
 
-/**
- * Standalone one-shot WS endpoint (same protocol as attachOneShotWs) for
+/** Standalone one-shot WS endpoint (same protocol as attachOneShotWs) for
  * tests that exercise the bridge directly.
  */
-export async function startFakeWs(result: unknown): Promise<FakeWs> {
+export async function startFakeWs(
+  result: unknown,
+  opts: { authInvalid?: boolean } = {},
+): Promise<FakeWs> {
   const received: unknown[] = [];
   const server: Server = createServer((_req: IncomingMessage, res: ServerResponse) => {
     res.statusCode = 426;
     res.end();
   });
   const sockets = new Set<Socket>();
-  attachOneShotWs(server, () => result, sockets, received);
+  attachOneShotWs(server, () => result, sockets, received, opts.authInvalid === true);
 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const addr = server.address() as AddressInfo;
@@ -244,6 +250,34 @@ export async function startFakeWs(result: unknown): Promise<FakeWs> {
     },
   };
   return fake;
+}
+
+/** Grab an ephemeral port and free it: nothing listens there afterwards. */
+export async function unusedPort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return port;
+}
+
+/**
+ * HTTP endpoint that accepts connections and never answers, to exercise the
+ * connect-phase timeout. `close` force-closes any dangling sockets.
+ */
+export async function startHangingServer(): Promise<{ url: string; close(): Promise<void> }> {
+  const server: Server = createServer(() => {
+    // deliberately never respond
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const addr = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${addr.port}`,
+    async close() {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    },
+  };
 }
 
 // ---------- CLI runner ----------
@@ -264,6 +298,7 @@ export type RunCliResult = { status: number; stdout: string; stderr: string };
 export function runCli(args: string[], opts: RunCliOpts = {}): Promise<RunCliResult> {
   const env: Record<string, string> = { ...process.env } as Record<string, string>;
   delete env.XDG_CONFIG_HOME; // keep resolution anchored to the (temp) HOME
+  delete env.HASS_URLS; // never inherit candidate lists from the developer shell
   for (const [k, v] of Object.entries(opts.env ?? {})) {
     if (v === undefined) delete env[k];
     else env[k] = v;

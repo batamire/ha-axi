@@ -1,10 +1,31 @@
-import { describe, expect, it } from "vitest";
-import { startFakeWs } from "./helpers.js";
+import { describe, expect, it, vi } from "vitest";
+import type { AxiError } from "axi-sdk-js";
+import { startFakeWs, unusedPort } from "./helpers.js";
 import { wsCall } from "../dist/ws.js";
 import type { ResolvedConfig } from "../dist/config.js";
 
 function cfg(url: string): ResolvedConfig {
-  return { url, token: "synthetic-token", profile: "test", timeoutMs: 2_000, insecure: false };
+  return {
+    url,
+    urls: [url],
+    token: "synthetic-token",
+    profile: "test",
+    timeoutMs: 2_000,
+    insecure: false,
+    verbose: false,
+  };
+}
+
+function cfgUrls(urls: string[]): ResolvedConfig {
+  return { ...cfg(urls[0]), urls };
+}
+
+function captureStderr(): { text(): string; restore(): void } {
+  const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  return {
+    text: () => spy.mock.calls.map((call) => String(call[0])).join(""),
+    restore: () => spy.mockRestore(),
+  };
 }
 
 describe("stateless WS bridge", () => {
@@ -30,5 +51,51 @@ describe("stateless WS bridge", () => {
     await expect(
       wsCall(cfg("http://127.0.0.1:9"), "config/area_registry/list", {}),
     ).rejects.toMatchObject({ code: "CONNECTION_FAILED" });
+  });
+
+  it("surfaces transport detail instead of the old fixed message", async () => {
+    const dead = await unusedPort();
+    const err = (await wsCall(cfg(`http://127.0.0.1:${dead}`), "config/area_registry/list", {}).catch(
+      (e: unknown) => e,
+    )) as AxiError;
+    expect(err).toMatchObject({ code: "CONNECTION_FAILED" });
+    expect(err.message).toMatch(/over WebSocket/i);
+    expect(err.message).not.toBe("Cannot reach Home Assistant over WebSocket");
+    // Node reports the underlying socket failure on the close event (1006).
+    expect(err.message).toMatch(/1006|closed|refused|ECONNREFUSED/i);
+  });
+
+  it("falls back to the next candidate on a transport-level failure", async () => {
+    const dead = await unusedPort();
+    const fake = await startFakeWs({ name: "kitchen", floor_id: null });
+    const stderr = captureStderr();
+    try {
+      const out = await wsCall(
+        cfgUrls([`http://127.0.0.1:${dead}`, fake.url]),
+        "config/area_registry/list",
+        {},
+      );
+      expect(out).toEqual({ name: "kitchen", floor_id: null });
+      expect(stderr.text()).toContain("candidate 1/2");
+      expect(stderr.text()).toContain("using candidate 2/2");
+      expect(fake.received).toHaveLength(2);
+    } finally {
+      stderr.restore();
+      await fake.close();
+    }
+  });
+
+  it("does not fall back when a candidate rejects auth (auth_invalid)", async () => {
+    const bad = await startFakeWs({}, { authInvalid: true });
+    const good = await startFakeWs({ name: "kitchen" });
+    try {
+      await expect(
+        wsCall(cfgUrls([bad.url, good.url]), "config/area_registry/list", {}),
+      ).rejects.toMatchObject({ code: "AUTH_INVALID" });
+      expect(good.received).toHaveLength(0);
+    } finally {
+      await bad.close();
+      await good.close();
+    }
   });
 });

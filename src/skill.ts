@@ -71,9 +71,34 @@ counts, unavailable / low-battery / stale entities).
 ${commandRows}
 
 Global flags on every command: \`--profile/-p <name>\`, \`--url <url>\`,
-\`--token <token>\`. Credential resolution order: flags >
+\`--token <token>\`, \`--verbose\`. Credential resolution order: flags >
 \`HASS_URL\`/\`HASS_TOKEN\` env > config profiles in
 \`~/.config/ha-axi/config.toml\` > stdin token.
+
+## Connection fallback
+
+A profile can list ordered candidate URLs for the same instance (for example
+an internal LAN address plus a Tailscale address), either as a TOML array:
+
+\`\`\`toml
+[profiles.default]
+urls = ["https://hass.example:8123", "https://hass.tailnet.example"]
+token = "<long-lived-access-token>"
+\`\`\`
+
+or as the comma-separated \`HASS_URLS\` environment variable. Resolution
+order: \`--url\` > \`HASS_URLS\` > \`HASS_URL\` > profile \`urls\` > profile
+\`url\`; a legacy single URL is a one-candidate list and behaves unchanged.
+
+Candidates are tried in order and the first that completes a transport-level
+request wins. Fallback is transport-only (refused/unreachable connection, DNS
+failure, timeout) — an HTTP answer (401/403/404/429/5xx) is NEVER retried
+against another candidate, because it proves the instance is reachable.
+All candidates share the profile's one token.
+
+stdout keeps the documented TOON shape; fallbacks and candidate selection are
+reported on stderr (\`--verbose\` traces the happy path too). URLs are printed
+redacted and tokens are never echoed.
 
 ## Auth bootstrap
 

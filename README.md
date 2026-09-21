@@ -85,6 +85,57 @@ Every command closes with 1–2 `help:` suggestion lines pointing at a sensible
 next step. Errors are always structured TOON `{error, code}` with exit codes
 mapped for scripting.
 
+## Connection fallback (multiple URLs)
+
+A normal home setup has more than one way to reach the same instance — an
+internal LAN address and a Tailscale address, say. Instead of wrapping ha-axi
+in a reachability shim, declare ordered candidates and let the tool pick:
+
+```toml
+[profiles.default]
+urls = [
+  "https://hass.example:8123",     # internal, tried first
+  "https://hass.tailnet.example",  # tailnet fallback
+  "https://hass-backup.example",   # last resort
+]
+token = "<long-lived-access-token>"
+```
+
+or via the environment:
+
+```sh
+export HASS_URLS="https://hass.example:8123,https://hass.tailnet.example"
+```
+
+Resolution order: `--url` > `HASS_URLS` > `HASS_URL` > profile `urls` > profile
+`url`. A legacy single `url`/`HASS_URL` is exactly a one-candidate list and
+behaves as before; `urls`, when present and non-empty, wins over `url`.
+
+Candidates are tried left to right and the first one that completes a
+transport-level request wins. Once a candidate answers, the remaining requests
+of the same invocation try it first, so a dead primary is probed once, not
+per request. All candidates share the profile's single token — they are
+assumed to be the same Home Assistant instance.
+
+**Fallback is transport-only.** A refused or unreachable connection, a DNS
+failure, or a timeout moves on to the next candidate. An HTTP answer never
+does: `401`, `403`, `404`, `429`, and `5xx` all stop the search and surface as
+their normal structured error, because an HTTP response proves the instance is
+reachable — retrying elsewhere would mask a wrong token or the wrong instance.
+
+**Which candidate answered?** stdout keeps the documented TOON shape exactly.
+stderr always gets a line when a fallback happened:
+
+```
+ha-axi: candidate 1/2 https://hass.example:8123 unreachable: connect ECONNREFUSED ...
+ha-axi: using candidate 2/2: https://hass.tailnet.example (fallback)
+```
+
+Pass `--verbose` to trace candidate selection even when the first candidate
+works, including each failure. Candidate URLs are printed without
+credentials, query, or fragment; the token (and any credentials embedded in a
+URL) is scrubbed from every line, including error messages.
+
 ## Safety
 
 ha-axi is built for agents operating unattended, so the guardrails are

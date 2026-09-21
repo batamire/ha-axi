@@ -4,7 +4,15 @@ import type { ResolvedConfig } from "../dist/config.js";
 import { startFakeHa } from "./helpers.js";
 
 function cfg(url: string): ResolvedConfig {
-  return { url, token: "synthetic-token", profile: "test", timeoutMs: 5_000, insecure: false };
+  return {
+    url,
+    urls: [url],
+    token: "synthetic-token",
+    profile: "test",
+    timeoutMs: 5_000,
+    insecure: false,
+    verbose: false,
+  };
 }
 
 describe("REST client retry policy", () => {

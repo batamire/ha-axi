@@ -44,7 +44,7 @@ describe("ping", () => {
     }
   });
 
-  it("maps a refused connection to CONNECTION_FAILED", async () => {
+  it("maps a refused connection to CONNECTION_FAILED and reports the cause", async () => {
     // Grab an ephemeral port and free it: nothing listens there now.
     const srv = createServer();
     await new Promise<void>((resolve) => srv.listen(0, "127.0.0.1", resolve));
@@ -57,6 +57,11 @@ describe("ping", () => {
     expect(res.status).not.toBe(0);
     const doc = decode(toonPart(res.stdout)) as Record<string, unknown>;
     expect(doc.code).toBe("CONNECTION_FAILED");
+    // Regression: undici rejects with the literal "fetch failed" and hides the
+    // real reason in err.cause, so asserting only doc.code missed it entirely.
+    // The cause detail must reach the operator.
+    expect(String(doc.error)).toContain("ECONNREFUSED");
+    expect(String(doc.error)).not.toBe("Cannot reach Home Assistant: fetch failed");
   });
 
   it("rejects an unknown subcommand with a validation error", async () => {
