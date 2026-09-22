@@ -26,6 +26,7 @@ type CallSpec = {
 const CALL_USAGE = [
   "usage: ha-axi service call <domain.service> [--entity <id,id,...>] [key=value ...] [--dry-run]",
   "example: ha-axi service call light.turn_on --entity light.kitchen brightness=80",
+  'example: ha-axi service call example.set_options --entity switch.example \'options={"mode":"fast"}\'',
 ];
 
 function parseServiceName(arg: string | undefined): { domain: string; service: string } {
@@ -42,11 +43,22 @@ function parseServiceName(arg: string | undefined): { domain: string; service: s
   return { domain: arg.slice(0, dot), service: arg.slice(dot + 1) };
 }
 
-/** Data value coercion: numeric strings → number, true/false → boolean, else string. */
+/** Data value coercion: JSON objects/arrays → parsed value, numeric strings →
+ * number, true/false → boolean, else string. Never throws: a value that merely
+ * looks like JSON (starts with `{` or `[`) but does not parse stays a string,
+ * exactly as before. */
 export function coerceDataValue(raw: string): unknown {
   if (raw === "true") return true;
   if (raw === "false") return false;
   if (/^-?\d+(\.\d+)?$/.test(raw)) return Number(raw);
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return raw;
+    }
+  }
   return raw;
 }
 

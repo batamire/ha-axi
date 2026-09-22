@@ -61,6 +61,21 @@ compact, lossless, and cheap for agents to consume.
 - Errors are structured TOON \`{error, code}\` envelopes; exit codes are
   script-friendly.
 
+## Service call data
+
+Data pairs are \`key=value\`, split on the **first** \`=\`, so a JSON value
+may contain \`=\` freely. Values coerce in this order: \`true\`/\`false\` →
+boolean, a numeric string → number, a value starting with \`{\` or \`[\` that
+parses → the parsed JSON value, anything else → the raw string. Invalid JSON
+never fails the call — it is sent as the string it was.
+
+Quote JSON values in the shell so the shell does not split or expand them:
+
+\`\`\`sh
+ha-axi service call example.set_options --entity switch.example \\
+  'options={"mode":"fast","retries":3}'
+\`\`\`
+
 ## Commands
 
 Bare \`ha-axi\` prints a dashboard (profile, version, entity count, domain

@@ -297,6 +297,85 @@ describe("error taxonomy passthrough", () => {
   });
 });
 
+describe("data value coercion", () => {
+  /** Run a --dry-run call and return the coerced data object it printed. */
+  async function dryRunData(pairs: string[]): Promise<Record<string, unknown>> {
+    const fake = await fakeWithServices();
+    try {
+      const res = await runCli(
+        ["service", "call", "light.turn_on", "--entity", "light.kitchen", "--dry-run", ...pairs],
+        { env: { ...ENV, HASS_URL: fake.url } },
+      );
+      expect(res.status).toBe(0);
+      const doc = leadDoc(res.stdout) as { data: Record<string, unknown> };
+      // --dry-run must not touch the network at all.
+      expect(fake.hits).toEqual([]);
+      return doc.data;
+    } finally {
+      await fake.close();
+    }
+  }
+
+  it("parses a JSON object", async () => {
+    expect(await dryRunData(['options={"mode":"fast","retries":3}'])).toEqual({
+      options: { mode: "fast", retries: 3 },
+    });
+  });
+
+  it("parses a JSON array", async () => {
+    expect(await dryRunData(["ids=[1,2,3]"])).toEqual({ ids: [1, 2, 3] });
+  });
+
+  it("parses nested objects and arrays", async () => {
+    expect(await dryRunData(['opts={"a":{"b":[1,{"c":true}]}}'])).toEqual({
+      opts: { a: { b: [1, { c: true }] } },
+    });
+  });
+
+  it("falls back to the raw string when the JSON is invalid", async () => {
+    expect(await dryRunData(['broken={"mode":', "arrayish=[not json", "bracey={not json"])).toEqual({
+      broken: '{"mode":',
+      arrayish: "[not json",
+      bracey: "{not json",
+    });
+  });
+
+  it("leaves numbers, booleans and plain strings unchanged", async () => {
+    expect(
+      await dryRunData(["brightness=80", "ratio=-1.5", "flag_on=true", "flag_off=false", "effect=none", "empty="]),
+    ).toEqual({ brightness: 80, ratio: -1.5, flag_on: true, flag_off: false, effect: "none", empty: "" });
+  });
+
+  it("splits the pair on the first '=' and posts the parsed value", async () => {
+    const fake = await fakeWithServices();
+    try {
+      const res = await runCli(
+        [
+          "service",
+          "call",
+          "light.turn_on",
+          "--entity",
+          "light.kitchen",
+          'options={"mode":"fast","retries":3}',
+          'note={"a":"b=c"}',
+        ],
+        { env: { ...ENV, HASS_URL: fake.url } },
+      );
+      expect(res.status).toBe(0);
+      const post = fake.hits.find((h) => h.method === "POST");
+      // The '=' inside the JSON value never becomes part of the key, and the
+      // value arrives parsed rather than as the string HA would reject.
+      expect(post?.body).toEqual({
+        options: { mode: "fast", retries: 3 },
+        note: { a: "b=c" },
+        entity_id: ["light.kitchen"],
+      });
+    } finally {
+      await fake.close();
+    }
+  });
+});
+
 describe("idempotent classifier", () => {
   it.each([
     ["turn_on", true],
