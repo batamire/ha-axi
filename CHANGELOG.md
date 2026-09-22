@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/batamire/ha-axi/compare/v0.2.0...v0.3.0) (2026-09-22)
+
+
+### Features
+
+* **service:** accept JSON objects and arrays as service call data values ([#25](https://github.com/batamire/ha-axi/issues/25)) ([898fdd9](https://github.com/batamire/ha-axi/commit/898fdd9a76a60611b780a894c1cccb3e3d781185))
+
 ## [0.2.0](https://github.com/batamire/ha-axi/compare/v0.1.1...v0.2.0) (2026-09-21)
 
 
