@@ -14,8 +14,8 @@ import { setupCommand } from "./setup.js";
 export const DESCRIPTION = "Agent control for Home Assistant without an MCP server";
 
 // Commands are advertised up front so agents can discover the surface.
-// Single source of truth for the advertised command surface; src/skill.ts
-// derives the SKILL.md command table from this map.
+// Single source of truth for the command surface; SKILL.md defers to this
+// help output rather than duplicating it.
 export const COMMAND_SUMMARY: Record<string, string> = {
   ping: "Liveness + auth probe (`{ok, profile, version, latency_ms}`)",
   entity: "List and inspect entities (`list`, `get`)",

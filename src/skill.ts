@@ -1,5 +1,3 @@
-import { COMMAND_SUMMARY } from "./cli.js";
-
 // Trigger string agents match against to auto-load the skill. Kept terse and
 // outcome-focused so it fires on Home Assistant jargon.
 export const SKILL_DESCRIPTION =
@@ -19,15 +17,12 @@ export const HERMES_TAGS = [
 export const HERMES_CATEGORY = "smart-home";
 
 /**
- * Single source of truth for the installable skill (#8/#9): SKILL.md is
- * derived here so it can never drift from what `ha-axi --help` advertises.
- * scripts/build-skill.ts writes the file and gates staleness via --check.
+ * Single source of truth for the installable skill: SKILL.md stays a pointer,
+ * never a copy. Installed skills go stale independently of releases, so
+ * command, flag, and workflow guidance is left to `ha-axi --help`, which ships
+ * with the binary and cannot drift from it.
  */
 export function createSkillMarkdown(): string {
-  const commandRows = Object.entries(COMMAND_SUMMARY)
-    .map(([name, desc]) => `| \`${name}\` | ${desc} |`)
-    .join("\n");
-
 return `---
 name: ha-axi
 description: ${JSON.stringify(SKILL_DESCRIPTION)}
@@ -40,104 +35,23 @@ metadata:
 
 # ha-axi
 
-## When to use
+Agent control for Home Assistant without an MCP server: one stateless CLI over
+the REST API plus a one-shot WebSocket bridge for registry reads, emitting TOON
+for token-efficient output. Use it whenever a task touches a Home Assistant
+instance.
 
-Use \`ha-axi\` whenever a task touches a Home Assistant instance and no MCP
-server is available or desired: inventorying entities, reading sensor states,
-rendering templates, inspecting history/logbook, discovering services, and
-calling services behind explicit safety gates. Output is always TOON -
-compact, lossless, and cheap for agents to consume.
+## Current guidance lives in the CLI
 
-## Safety posture
+Do not follow command, flag, or workflow instructions from this file -
+installed copies go stale. Get the current source of truth from the CLI:
 
-- **Gated domains**: \`lock\`, \`alarm_control_panel\`, \`cover\` are
-  hard-excluded from mutations client-side (\`DOMAIN_EXCLUDED\` before any
-  network call). Reads on those domains are unaffected.
-- **Non-concrete targets refused**: \`entity_id: all\`, area/device targeting
-  on mutations return \`BULK_TARGET_REFUSED\` unless the caller passes the
-  explicit \`--i-mean-all\` override.
-- **Dry-run first**: \`service call --dry-run\` prints the exact request and
-  exits 0 WITHOUT sending anything. Prefer it before any real call.
-- Errors are structured TOON \`{error, code}\` envelopes; exit codes are
-  script-friendly.
+- \`npx -y ha-axi\` for a dashboard of the instance (profile, version, entity
+  count, domain counts, unavailable / low-battery / stale entities)
+- \`npx -y ha-axi --help\` for global flags and the command index
+- \`npx -y ha-axi <command> --help\` for per-command usage
 
-## Service call data
-
-Data pairs are \`key=value\`, split on the **first** \`=\`, so a JSON value
-may contain \`=\` freely. Values coerce in this order: \`true\`/\`false\` →
-boolean, a numeric string → number, a value starting with \`{\` or \`[\` that
-parses → the parsed JSON value, anything else → the raw string. Invalid JSON
-never fails the call — it is sent as the string it was.
-
-Quote JSON values in the shell so the shell does not split or expand them:
-
-\`\`\`sh
-ha-axi service call example.set_options --entity switch.example \\
-  'options={"mode":"fast","retries":3}'
-\`\`\`
-
-## Commands
-
-Bare \`ha-axi\` prints a dashboard (profile, version, entity count, domain
-counts, unavailable / low-battery / stale entities).
-
-| command | description |
-| --- | --- |
-${commandRows}
-
-Global flags on every command: \`--profile/-p <name>\`, \`--url <url>\`,
-\`--token <token>\`, \`--verbose\`. Credential resolution order: flags >
-\`HASS_URL\`/\`HASS_TOKEN\` env > config profiles in
-\`~/.config/ha-axi/config.toml\` > stdin token.
-
-## Connection fallback
-
-A profile can list ordered candidate URLs for the same instance (for example
-an internal LAN address plus a Tailscale address), either as a TOML array:
-
-\`\`\`toml
-[profiles.default]
-urls = ["https://hass.example:8123", "https://hass.tailnet.example"]
-token = "<long-lived-access-token>"
-\`\`\`
-
-or as the comma-separated \`HASS_URLS\` environment variable. Resolution
-order: \`--url\` > \`HASS_URLS\` > \`HASS_URL\` > profile \`urls\` > profile
-\`url\`; a legacy single URL is a one-candidate list and behaves unchanged.
-
-Candidates are tried in order and the first that completes a transport-level
-request wins. Fallback is transport-only (refused/unreachable connection, DNS
-failure, timeout) — an HTTP answer (401/403/404/429/5xx) is NEVER retried
-against another candidate, because it proves the instance is reachable.
-All candidates share the profile's one token.
-
-stdout keeps the documented TOON shape; fallbacks and candidate selection are
-reported on stderr (\`--verbose\` traces the happy path too). URLs are printed
-redacted and tokens are never echoed.
-
-## Auth bootstrap
-
-1. In Home Assistant open **Settings → People → your user → Security →
-   Long-lived access tokens** and create a token (LLAT). Copy it once - it is
-   shown only at creation time.
-2. Either export credentials directly:
-
-   \`\`\`sh
-   export HASS_URL=https://hass.example
-   export HASS_TOKEN=<long-lived-access-token>
-   \`\`\`
-
-   or persist a named profile in \`~/.config/ha-axi/config.toml\`:
-
-   \`\`\`toml
-   [profiles.default]
-   url = "https://hass.example"
-   token = "<long-lived-access-token>"
-   \`\`\`
-
-3. Verify with \`ha-axi ping\` - expect \`{ok: true, profile, version,
-   latency_ms}\`.
-4. Optional ambient awareness for Claude/Codex/OpenCode sessions:
-   \`ha-axi setup hooks\`.
+Auth bootstrap, config profiles, connection fallback, and the safety gates
+(gated domains, bulk-target refusal, dry-run) are documented there. Mutating
+calls are guarded client-side regardless of what this file says.
 `;
 }
