@@ -25,6 +25,13 @@ npm install -g ha-axi
 
 Requires Node >= 20.
 
+Or run it ad hoc without installing anything (the bundled skill uses this
+form, so installed skill copies cannot go stale):
+
+```sh
+npx -y ha-axi ping
+```
+
 ## Quickstart
 
 1. **Create a long-lived access token (LLAT)** in Home Assistant:

@@ -33,16 +33,14 @@ describe("build-skill drift gate", () => {
     }
   });
 
-  it("SKILL.md documents auth bootstrap and safety posture", async () => {
+  it("SKILL.md defers command guidance to the CLI instead of embedding it", async () => {
     const md = await readFile(skillPath, "utf-8");
-    expect(md).toContain("Long-lived access tokens");
-    expect(md).toContain("HASS_URL");
-    expect(md).toContain("`ha-axi ping`");
-    expect(md).toContain("DOMAIN_EXCLUDED");
-    expect(md).toContain("--dry-run");
-    // command table mirrors COMMAND_SUMMARY
-    for (const cmd of ["ping", "entity", "service", "template", "history", "logbook", "area", "device", "statistics", "setup"]) {
-      expect(md).toContain(`| \`${cmd}\` |`);
-    }
+    expect(md).toContain("- `npx -y ha-axi` for a dashboard");
+    expect(md).toContain("npx -y ha-axi --help");
+    expect(md).toContain("npx -y ha-axi <command> --help");
+    // Duplicated surfaces drift between releases; keep them out.
+    expect(md).not.toContain("| `ping` |");
+    expect(md).not.toContain("HASS_TOKEN");
+    expect(md).not.toContain("DOMAIN_EXCLUDED");
   });
 });

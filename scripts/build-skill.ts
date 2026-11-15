@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
-// Generates skills/ha-axi/SKILL.md from src/skill.ts (which derives the
-// Commands block from the CLI's COMMAND_SUMMARY) so the installable skill
-// never drifts from what `ha-axi --help` prints.
+// Generates skills/ha-axi/SKILL.md from src/skill.ts. The skill is a pointer
+// to the CLI's own help output, so installed copies never duplicate (and
+// therefore never stale) the command surface.
 //
 //   pnpm run build:skill            # write the file
 //   pnpm run build:skill -- --check # fail (exit 1) if the committed file is stale
